@@ -260,6 +260,16 @@ class SignalKScanner(Scanner):
                     "value": off_reason.lower(),
                 }
             )
+
+        if cfg_device.link_to_engine:
+            # Set engine running state based on converter activity
+            is_running = data.get_charge_state().name != 'OFF'
+            values.append({
+                "path": f"propulsion.{cfg_device.engine_id}.running",
+                "value": is_running
+            })
+            logger.debug(f"Set {cfg_device.engine_id} running state: {is_running}")
+            
         return values
 
     def transform_inverter_data(
