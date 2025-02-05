@@ -46,6 +46,8 @@ class ConfiguredDevice:
     mac: str
     advertisement_key: str
     secondary_battery: Union[str, None]
+    link_to_engine: bool = False
+    engine_id: str = "mainEngine"
 
 
 class SignalKScanner(Scanner):
@@ -519,6 +521,8 @@ def main() -> None:
             mac=device["mac"],
             advertisement_key=device["key"],
             secondary_battery=device.get("secondary_battery"),
+            link_to_engine=device.get("linkToEngine", False),
+            engine_id=device.get("engineId", "mainEngine"),
         )
 
     logging.info("Starting Victron BLE plugin on adapter %s", adapter)

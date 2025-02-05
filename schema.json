@@ -25,8 +25,25 @@
           "id": {
             "type": "string",
             "title": "Device ID in SignalK",
-            "description": "Used to group device metrics under electrical.converters.[ID]",
+            "description": "Base path for converter metrics (electrical.converters.[ID])",
             "default": "0"
+          },
+          "linkToEngine": {
+            "type": "boolean",
+            "title": "Link Charger State to Engine Status",
+            "description": "Set engine running status based on charger activity",
+            "default": false
+          },
+          "engineId": {
+            "type": "string", 
+            "title": "Engine Identifier",
+            "description": "Target engine ID for propulsion status (e.g. 'portEngine')",
+            "default": "mainEngine",
+            "options": {
+              "dependencies": {
+                "linkToEngine": true
+              }
+            }
           },
           "mac": {
             "type": "string",
