@@ -25,7 +25,7 @@
           "id": {
             "type": "string",
             "title": "Device ID in SignalK",
-            "description": "Used to group device metrics under electrical.devices.[ID]",
+            "description": "Used to group device metrics under electrical.converters.[ID]",
             "default": "0"
           },
           "mac": {
