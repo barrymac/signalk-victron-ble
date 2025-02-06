@@ -7,7 +7,7 @@ import json
 import logging
 import os
 import sys
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Type, Union
 
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
