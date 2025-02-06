@@ -139,8 +139,7 @@ class SignalKScanner(Scanner):
                 {
                     "source": {
                         "label": "Victron",
-                        "type": "Bluetooth",
-                        "src": bl_device.address,
+                        "type": "Bluetooth"
                     },
                     "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                     "values": values,
@@ -603,32 +602,6 @@ def main() -> None:
         )
 
     logging.info("Starting Victron BLE plugin on adapter %s", adapter)
-
-    # Set all linked engines to 'notRunning' on startup
-    for cfg_device in devices.values():
-        if cfg_device.link_to_engine:
-            delta = {
-                "updates": [
-                    {
-                        "source": {
-                            "label": "Victron",
-                            "type": "Bluetooth",
-                            "src": "system"
-                        },
-                        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                        "values": [
-                            {
-                                "path": f"propulsion.{cfg_device.engine_id}.state.value",
-                                "value": "stopped",
-                                "meta": {"message": "Initial engine state"}
-                            }
-                        ]
-                    }
-                ]
-            }
-            print(json.dumps(delta))
-            sys.stdout.flush()
-
     asyncio.run(monitor(devices, adapter))
 
 
