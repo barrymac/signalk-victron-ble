@@ -55,7 +55,7 @@
             "type": "string",
             "title": "Advertisement Key",
             "default": "00000000000000000000000000000000"
-          },
+          }
           "secondary_battery": {
             "type": "string",
             "title": "Secondary Battery Device ID (if relevant)",

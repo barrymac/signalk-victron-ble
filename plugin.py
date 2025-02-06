@@ -23,17 +23,14 @@ from victron_ble.devices import (
     SolarChargerData,
     VEBusData,
 )
-
-T = TypeVar('T', bound=DeviceData)
-import inspect
 from victron_ble.exceptions import AdvertisementKeyMissingError, UnknownDeviceError
 from victron_ble.scanner import Scanner
 
+T = TypeVar('T', bound=DeviceData)
+
 logger = logging.getLogger("signalk-victron-ble")
 
-logger.debug(
-    f"victron plugin starting up"
-)
+logger.debug("victron plugin starting up")
 
 # 3.9 compatible TypeAliases
 SignalKDelta = dict[str, list[dict[str, Any]]]
@@ -120,7 +117,7 @@ class SignalKScanner(Scanner):
                 sys.stdout.flush()
                 return
         else:
-            logger.warn("Unknown device type %s from %s", type(device).__name__, bl_device.address.lower())
+            logger.warning("Unknown device type %s from %s", type(device).__name__, bl_device.address.lower())
 
     def prepare_signalk_delta(
         self, bl_device: BLEDevice, values: SignalKDeltaValues
@@ -129,13 +126,7 @@ class SignalKScanner(Scanner):
         configured_device = self._devices[bl_device.address.lower()]
         id_ = configured_device.id
         
-        # Add device name to all deltas
-        values.append({
-            "path": f"electrical.devices.{id_}.deviceName",
-            "value": bl_device.name
-        })
-        
-        # Add device name to all deltas
+        # Add device name to deltas
         values.append({
             "path": f"electrical.devices.{id_}.deviceName",
             "value": bl_device.name
