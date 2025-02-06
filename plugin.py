@@ -97,7 +97,7 @@ class SignalKScanner(Scanner):
         logger.debug(f"Processing device: ID={id_} MAC={bl_device.address.lower()}")
         transformers: dict[
             type[DeviceData],
-            Callable[[BLEDevice, ConfiguredDevice, T, str], SignalKDeltaValues],
+            Callable[[BLEDevice, ConfiguredDevice, DeviceData, str], SignalKDeltaValues],
         ] = {
             BatteryMonitorData: self.transform_battery_data,
             BatterySenseData: self.transform_battery_sense_data,
