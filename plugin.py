@@ -262,12 +262,11 @@ class SignalKScanner(Scanner):
             charge_state = getattr(data.get_charge_state(), 'name', 'unknown').lower()
             charger_error = getattr(data.get_charger_error(), 'name', 'unknown').lower()
                 
-            # Map to propulsion.*.state.value schema enum
-            # Simplified state mapping without unusable
+            # Map charge state to numeric engine state
             if charge_state in {'bulk', 'absorption', 'float', 'storage', 'equalize'}:
-                engine_state = 'started'
+                engine_state = 1
             else:
-                engine_state = 'stopped'  # Fallback for all other cases
+                engine_state = 0  # Fallback for all other cases
             
             # Optional: Log error states as warnings
             if charger_error != 'no_error':
@@ -278,9 +277,8 @@ class SignalKScanner(Scanner):
                 "value": engine_state
             })
             logger.debug(
-                "Charge: %s, Error: %s → %s",
+                "Charge: %s → Engine State: %d",
                 charge_state,
-                charger_error,
                 engine_state
             )
             
@@ -413,18 +411,18 @@ class SignalKScanner(Scanner):
             charge_state = getattr(data.get_charge_state(), 'name', 'unknown').lower()
             charger_error = getattr(data.get_charger_error(), 'name', 'unknown').lower()
             
-            # Map charge state to engine status
+            # Map charge state to numeric engine state
             if charge_state in {'bulk', 'absorption', 'float', 'storage', 'equalize'}:
-                engine_state = 'started'
+                engine_state = 1
             else:
-                engine_state = 'stopped'
+                engine_state = 0
                 
             values.append({
                 "path": f"propulsion.{cfg_device.engine_id}.state.value",
                 "value": engine_state
             })
             logger.debug(
-                "Orion XS Engine State: %s → %s",
+                "Orion XS Charge: %s → Engine State: %d",
                 charge_state,
                 engine_state
             )
