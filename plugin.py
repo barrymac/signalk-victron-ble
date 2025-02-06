@@ -527,7 +527,7 @@ async def monitor(devices: dict[str, ConfiguredDevice], adapter: str) -> None:
     os.environ["BLUETOOTH_DEVICE"] = adapter
     logger.info(f"Starting Victron BLE monitor on adapter {adapter}")
     
-    max_retry_interval = 300  # 5 minutes maximum backoff
+    max_retry_interval = 10  # 5 minutes maximum backoff
     retry_count = 0
     
     while True:
