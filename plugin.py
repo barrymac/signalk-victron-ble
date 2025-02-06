@@ -139,7 +139,8 @@ class SignalKScanner(Scanner):
                 {
                     "source": {
                         "label": "Victron",
-                        "type": "Bluetooth"
+                        "type": "Bluetooth",
+                        "src": bl_device.address.lower()
                     },
                     "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                     "values": values,
