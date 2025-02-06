@@ -52,6 +52,7 @@ class ConfiguredDevice:
 
 class SignalKScanner(Scanner):
     _devices: dict[str, ConfiguredDevice]
+    discovered_devices: set[str]
 
     def __init__(self, devices: dict[str, ConfiguredDevice]) -> None:
         # Add debug logging for parent class inspection
@@ -62,6 +63,7 @@ class SignalKScanner(Scanner):
             logger.debug(f"Parent __init__ args required: {e}")
             raise
         self._devices = devices
+        self.discovered_devices = set()
 
     def load_key(self, address: str) -> str:
         try:
@@ -70,6 +72,9 @@ class SignalKScanner(Scanner):
             raise AdvertisementKeyMissingError(f"No key available for {address}")
 
     def callback(self, bl_device: BLEDevice, raw_data: bytes) -> None:
+        logger.debug(f"Device discovered: {bl_device}")
+        self.discovered_devices.add(bl_device.address.lower())
+        
         rssi = getattr(bl_device, "rssi", None)
         if rssi is None:
             logger.debug(f"No RSSI for {bl_device.address.lower()}")
@@ -495,19 +500,50 @@ async def monitor(devices: dict[str, ConfiguredDevice], adapter: str) -> None:
     os.environ["BLUETOOTH_DEVICE"] = adapter
     logger.info(f"Starting Victron BLE monitor on adapter {adapter}")
     
+    max_retry_interval = 300  # 5 minutes maximum backoff
+    retry_count = 0
+    
     while True:
+        scanner = None
         try:
+            # Reset scanner with fresh instance each retry
             scanner = SignalKScanner(devices)
-            logger.debug(f"Initializing scanner with adapter {adapter}")
+            logger.debug(f"Scan attempt #{retry_count+1} on {adapter}")
+            
+            # Scan with extended timeout for device discovery
             await scanner.start()
+            
+            # Check for core devices missing from discovery
+            missing_devices = [
+                d.mac for d in devices.values() 
+                if d.mac not in scanner.discovered_devices
+            ]
+            if missing_devices and retry_count < 3:
+                logger.warning(f"Missing initial devices: {missing_devices}")
+                retry_count += 1
+                raise RuntimeError("Initial device discovery incomplete")
+
+            # Allow event loop to process while scanner runs
             await asyncio.Event().wait()
-        except (Exception, asyncio.CancelledError) as e:
-            logger.error(f"Scanner failed: {e}", exc_info=True)
-            logger.info(f"Attempting restart in 5 seconds...")
-            await asyncio.sleep(5)
+            
+        except (RuntimeError, Exception, asyncio.CancelledError) as e:
+            logger.error(f"Scanner failed (attempt {retry_count+1}): {e}")
+            logger.info("Attempting restart with backoff...")
+            
+            # Progressive backoff up to 5 minutes
+            backoff = min(2 ** retry_count, max_retry_interval)
+            await asyncio.sleep(backoff)
+            retry_count += 1
             continue
+            
         else:
-            break
+            # Successful scan - reset retry counter
+            retry_count = 0
+        finally:
+            # Clean up scanner resources
+            if scanner:
+                await scanner.stop()
+                del scanner
 
 
 def main() -> None:
