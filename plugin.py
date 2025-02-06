@@ -279,7 +279,10 @@ class SignalKScanner(Scanner):
                 "value": engine_state
             })
             logger.debug(
-                f"Charge: {charge_state}, Error: {charger_error} → {engine_state}"
+                "Charge: %s, Error: %s → %s",
+                charge_state,
+                charger_error,
+                engine_state
             )
             
         return values
