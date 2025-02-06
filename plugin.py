@@ -1,13 +1,13 @@
 import argparse
 import asyncio
-import datetime
 import dataclasses
+import datetime
 import inspect
 import json
 import logging
 import os
 import sys
-from typing import Any, Callable, TypeVar, Union
+from typing import Any, Callable, Dict, List, Union
 
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
@@ -27,15 +27,13 @@ from victron_ble.devices import (
 from victron_ble.exceptions import AdvertisementKeyMissingError, UnknownDeviceError
 from victron_ble.scanner import Scanner
 
-T = TypeVar('T', bound=DeviceData)
-
 logger = logging.getLogger("signalk-victron-ble")
 
-logger.debug("victron plugin starting up")
+logger.debug("Victron BLE plugin initializing")
 
 # 3.9 compatible TypeAliases
-SignalKDelta = dict[str, list[dict[str, Any]]]
-SignalKDeltaValues = list[dict[str, Union[int, float, str, None]]]
+SignalKDelta = Dict[str, List[Dict[str, Any]]]
+SignalKDeltaValues = List[Dict[str, Union[int, float, str, None]]]
 
 
 @dataclasses.dataclass
@@ -49,12 +47,12 @@ class ConfiguredDevice:
 
 
 class SignalKScanner(Scanner):
-    _devices: dict[str, ConfiguredDevice]
-    discovered_devices: set[str]
+    _devices: Dict[str, ConfiguredDevice]
+    discovered_devices: set[str] = dataclasses.field(default_factory=set)
 
-    def __init__(self, devices: dict[str, ConfiguredDevice]) -> None:
+    def __init__(self, devices: Dict[str, ConfiguredDevice]) -> None:
         # Add debug logging for parent class inspection
-        logger.debug(f"Parent __init__ signature: {inspect.signature(super().__init__)}")
+        logger.debug("Parent __init__ signature: %s", inspect.signature(super().__init__))
         try:
             super().__init__()
         except TypeError as e:
@@ -95,8 +93,8 @@ class SignalKScanner(Scanner):
         configured_device = self._devices[bl_device.address.lower()]
         id_ = configured_device.id
         logger.debug(f"Processing device: ID={id_} MAC={bl_device.address.lower()}")
-        transformers: dict[
-            type[DeviceData],
+        transformers: Dict[
+            Type[DeviceData],
             Callable[[BLEDevice, ConfiguredDevice, Any, str], SignalKDeltaValues],
         ] = {
             BatteryMonitorData: self.transform_battery_data,
@@ -517,7 +515,7 @@ async def monitor(devices: dict[str, ConfiguredDevice], adapter: str) -> None:
             
             # Check for core devices missing from discovery
             missing_devices = [
-                d.mac for d in devices.values() 
+                d.mac for d in devices.values()
                 if d.mac not in scanner.discovered_devices
             ]
             if missing_devices and retry_count < 3:
