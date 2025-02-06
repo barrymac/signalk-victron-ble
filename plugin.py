@@ -68,7 +68,7 @@ class SignalKScanner(Scanner):
             raise AdvertisementKeyMissingError(f"No key available for {address}")
 
     def callback(self, bl_device: BLEDevice, raw_data: bytes) -> None:
-        logger.debug(f"Device discovered: {bl_device}")
+        logger.debug("Device discovered: %s", bl_device)
         self.discovered_devices.add(bl_device.address.lower())
         
         rssi = getattr(bl_device, "rssi", None)
@@ -77,9 +77,12 @@ class SignalKScanner(Scanner):
             return
         
         logger.debug(
-            f"Received {len(raw_data)}B packet from {bl_device.address.lower()} "
-            f"(RSSI: {rssi}) @ {datetime.datetime.now().isoformat()}: "
-            f"Payload={raw_data.hex()}"
+            "Received %dB packet from %s (RSSI: %d) @ %s: Payload=%s",
+            len(raw_data),
+            bl_device.address.lower(),
+            rssi,
+            datetime.datetime.now().isoformat(),
+            raw_data.hex()
         )
         
         try:
@@ -92,7 +95,7 @@ class SignalKScanner(Scanner):
         data = device.parse(raw_data)
         configured_device = self._devices[bl_device.address.lower()]
         id_ = configured_device.id
-        logger.debug(f"Processing device: ID={id_} MAC={bl_device.address.lower()}")
+        logger.debug("Processing device: ID=%s MAC=%s", id_, bl_device.address.lower())
         transformers: Dict[
             Type[DeviceData],
             Callable[[BLEDevice, ConfiguredDevice, Any, str], SignalKDeltaValues],
