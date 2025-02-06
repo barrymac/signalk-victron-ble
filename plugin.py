@@ -262,13 +262,17 @@ class SignalKScanner(Scanner):
             )
 
         if cfg_device.link_to_engine:
-            # Set engine running state based on converter activity
-            is_running = data.get_charge_state().name != 'OFF'
+            # Robust state handling for engine status
+            charge_state = getattr(data.get_charge_state(), 'name', 'unknown').lower()
+            is_running = charge_state not in {'off', 'disconnected', 'unknown'}
+            
             values.append({
                 "path": f"propulsion.{cfg_device.engine_id}.running",
                 "value": is_running
             })
-            logger.debug(f"Set {cfg_device.engine_id} running state: {is_running}")
+            logger.debug(
+                f"Charge state: {charge_state} → {cfg_device.engine_id}.running = {is_running}"
+            )
             
         return values
 
