@@ -24,10 +24,22 @@ module.exports = function (app) {
 
       child.stdout.on('data', data => {
         app.debug(data.toString())
+        
         try {
           data.toString().split(/\r?\n/).forEach(line => {
             if (line.length > 0) {
-              app.handleMessage(undefined, JSON.parse(line))
+              const delta = JSON.parse(line)
+              
+              // Debug log engine states explicitly
+              delta.updates?.forEach(update => {
+                update.values?.forEach(value => {
+                  if (value.path.startsWith('propulsion.')) {
+                    console.log(`Engine State Update: ${JSON.stringify(value)}`)
+                  }
+                })
+              })
+              
+              app.handleMessage(undefined, delta)
               app.handleMessage(pkgData.name, {
                 updates: [{
                   values: [{
