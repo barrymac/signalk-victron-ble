@@ -267,16 +267,27 @@ class SignalKScanner(Scanner):
             )
 
         if cfg_device.link_to_engine:
-            # Robust state handling for engine status
             charge_state = getattr(data.get_charge_state(), 'name', 'unknown').lower()
-            is_running = charge_state not in {'off', 'disconnected', 'unknown'}
-            
+            charger_error = getattr(data.get_charger_error(), 'name', 'unknown').lower()
+                
+            # Map to propulsion.*.state.value schema enum
+            if charger_error != 'no_error':
+                engine_state = 'unusable'
+            elif charge_state in {'bulk', 'absorption', 'float', 'storage', 'equalize'}:
+                engine_state = 'started'
+            elif charge_state in {'off', 'disconnected'}:
+                engine_state = 'stopped'
+            else:
+                engine_state = 'unusable'
+                
             values.append({
-                "path": f"propulsion.{cfg_device.engine_id}.running",
-                "value": is_running
+                "path": f"propulsion.{cfg_device.engine_id}.state.value",
+                "value": engine_state
             })
             logger.debug(
-                f"Charge state: {charge_state} → {cfg_device.engine_id}.running = {is_running}"
+                f"Charge state: {charge_state}, "
+                f"error: {charger_error} → "
+                f"{cfg_device.engine_id}.state.value = {engine_state}"
             )
             
         return values
@@ -591,8 +602,8 @@ def main() -> None:
                         "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                         "values": [
                             {
-                                "path": f"propulsion.{cfg_device.engine_id}.running",
-                                "value": False,
+                                "path": f"propulsion.{cfg_device.engine_id}.state.value",
+                                "value": "stopped",
                                 "meta": {"message": "Initial engine state"}
                             }
                         ]
