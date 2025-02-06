@@ -271,23 +271,22 @@ class SignalKScanner(Scanner):
             charger_error = getattr(data.get_charger_error(), 'name', 'unknown').lower()
                 
             # Map to propulsion.*.state.value schema enum
-            if charger_error != 'no_error':
-                engine_state = 'unusable'
-            elif charge_state in {'bulk', 'absorption', 'float', 'storage', 'equalize'}:
+            # Simplified state mapping without unusable
+            if charge_state in {'bulk', 'absorption', 'float', 'storage', 'equalize'}:
                 engine_state = 'started'
-            elif charge_state in {'off', 'disconnected'}:
-                engine_state = 'stopped'
             else:
-                engine_state = 'unusable'
+                engine_state = 'stopped'  # Fallback for all other cases
+            
+            # Optional: Log error states as warnings
+            if charger_error != 'no_error':
+                logger.warning(f"Charger error detected: {charger_error}")
                 
             values.append({
                 "path": f"propulsion.{cfg_device.engine_id}.state.value",
                 "value": engine_state
             })
             logger.debug(
-                f"Charge state: {charge_state}, "
-                f"error: {charger_error} → "
-                f"{cfg_device.engine_id}.state.value = {engine_state}"
+                f"Charge: {charge_state}, Error: {charger_error} → {engine_state}"
             )
             
         return values
