@@ -409,6 +409,27 @@ class SignalKScanner(Scanner):
                     "value": off_reason.lower(),
                 }
             )
+
+        if cfg_device.link_to_engine:
+            charge_state = getattr(data.get_charge_state(), 'name', 'unknown').lower()
+            charger_error = getattr(data.get_charger_error(), 'name', 'unknown').lower()
+            
+            # Map charge state to engine status
+            if charge_state in {'bulk', 'absorption', 'float', 'storage', 'equalize'}:
+                engine_state = 'started'
+            else:
+                engine_state = 'stopped'
+                
+            values.append({
+                "path": f"propulsion.{cfg_device.engine_id}.state.value",
+                "value": engine_state
+            })
+            logger.debug(
+                "Orion XS Engine State: %s → %s",
+                charge_state,
+                engine_state
+            )
+
         return values
 
     def transform_smart_lithium_data(
