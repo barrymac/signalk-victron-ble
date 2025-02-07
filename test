@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-let devices = require('./test-devices')
 
 require('./')({
   debug: () => {},

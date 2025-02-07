@@ -1,12 +1,13 @@
 import argparse
 import asyncio
-import datetime
 import dataclasses
+import datetime
+import inspect
 import json
 import logging
 import os
 import sys
-from typing import Any, Callable, TypeVar, Union
+from typing import Any, Callable, Dict, List, Type, Union
 
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
@@ -23,21 +24,16 @@ from victron_ble.devices import (
     SolarChargerData,
     VEBusData,
 )
-
-T = TypeVar('T', bound=DeviceData)
-import inspect
 from victron_ble.exceptions import AdvertisementKeyMissingError, UnknownDeviceError
 from victron_ble.scanner import Scanner
 
 logger = logging.getLogger("signalk-victron-ble")
 
-logger.debug(
-    f"victron plugin starting up"
-)
+logger.debug("Victron BLE plugin initializing")
 
 # 3.9 compatible TypeAliases
-SignalKDelta = dict[str, list[dict[str, Any]]]
-SignalKDeltaValues = list[dict[str, Union[int, float, str, None]]]
+SignalKDelta = Dict[str, List[Dict[str, Any]]]
+SignalKDeltaValues = List[Dict[str, Union[int, float, str, None]]]
 
 
 @dataclasses.dataclass
@@ -46,20 +42,24 @@ class ConfiguredDevice:
     mac: str
     advertisement_key: str
     secondary_battery: Union[str, None]
+    link_to_engine: bool = False
+    engine_id: str = "mainEngine"
 
 
 class SignalKScanner(Scanner):
-    _devices: dict[str, ConfiguredDevice]
+    _devices: Dict[str, ConfiguredDevice]
+    discovered_devices: set[str] = dataclasses.field(default_factory=set)
 
-    def __init__(self, devices: dict[str, ConfiguredDevice]) -> None:
+    def __init__(self, devices: Dict[str, ConfiguredDevice]) -> None:
         # Add debug logging for parent class inspection
-        logger.debug(f"Parent __init__ signature: {inspect.signature(super().__init__)}")
+        logger.debug("Parent __init__ signature: %s", inspect.signature(super().__init__))
         try:
             super().__init__()
         except TypeError as e:
             logger.debug(f"Parent __init__ args required: {e}")
             raise
         self._devices = devices
+        self.discovered_devices = set()
 
     def load_key(self, address: str) -> str:
         try:
@@ -68,16 +68,14 @@ class SignalKScanner(Scanner):
             raise AdvertisementKeyMissingError(f"No key available for {address}")
 
     def callback(self, bl_device: BLEDevice, raw_data: bytes) -> None:
-        rssi = getattr(bl_device, "rssi", None)
-        if rssi is None:
-            logger.debug(f"No RSSI for {bl_device.address.lower()}")
-            return
+        logger.info("Discovered: %s (RSSI: %d)", bl_device.address, bl_device.rssi)
+        self.discovered_devices.add(bl_device.address.lower())
         
-        logger.debug(
-            f"Received {len(raw_data)}B packet from {bl_device.address.lower()} "
-            f"(RSSI: {rssi}) @ {datetime.datetime.now().isoformat()}: "
-            f"Payload={raw_data.hex()}"
-        )
+        if not raw_data:
+            logger.warning("Empty payload from %s", bl_device.address)
+            return
+            
+        logger.debug("DATA: <%04X>%s", len(raw_data), raw_data.hex())
         
         try:
             device = self.get_device(bl_device, raw_data)
@@ -89,10 +87,10 @@ class SignalKScanner(Scanner):
         data = device.parse(raw_data)
         configured_device = self._devices[bl_device.address.lower()]
         id_ = configured_device.id
-        logger.debug(f"Processing device: ID={id_} MAC={bl_device.address.lower()}")
-        transformers: dict[
-            type[DeviceData],
-            Callable[[BLEDevice, ConfiguredDevice, T, str], SignalKDeltaValues],
+        logger.debug("Processing device: ID=%s MAC=%s", id_, bl_device.address.lower())
+        transformers: Dict[
+            Type[DeviceData],
+            Callable[[BLEDevice, ConfiguredDevice, Any, str], SignalKDeltaValues],
         ] = {
             BatteryMonitorData: self.transform_battery_data,
             BatterySenseData: self.transform_battery_sense_data,
@@ -113,7 +111,7 @@ class SignalKScanner(Scanner):
                 sys.stdout.flush()
                 return
         else:
-            logger.warn("Unknown device type %s from %s", type(device).__name__, bl_device.address.lower())
+            logger.warning("Unknown device type %s from %s", type(device).__name__, bl_device.address.lower())
 
     def prepare_signalk_delta(
         self, bl_device: BLEDevice, values: SignalKDeltaValues
@@ -122,13 +120,7 @@ class SignalKScanner(Scanner):
         configured_device = self._devices[bl_device.address.lower()]
         id_ = configured_device.id
         
-        # Add device name to all deltas
-        values.append({
-            "path": f"electrical.devices.{id_}.deviceName",
-            "value": bl_device.name
-        })
-        
-        # Add device name to all deltas
+        # Add device name to deltas
         values.append({
             "path": f"electrical.devices.{id_}.deviceName",
             "value": bl_device.name
@@ -140,7 +132,7 @@ class SignalKScanner(Scanner):
                     "source": {
                         "label": "Victron",
                         "type": "Bluetooth",
-                        "src": bl_device.address,
+                        "src": bl_device.address.lower()
                     },
                     "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                     "values": values,
@@ -258,6 +250,31 @@ class SignalKScanner(Scanner):
                     "value": off_reason.lower(),
                 }
             )
+
+        if cfg_device.link_to_engine:
+            charge_state = getattr(data.get_charge_state(), 'name', 'unknown').lower()
+            charger_error = getattr(data.get_charger_error(), 'name', 'unknown').lower()
+                
+            # Map charge state to numeric engine state
+            if charge_state in {'bulk', 'absorption', 'float', 'storage', 'equalize'}:
+                engine_state = 1
+            else:
+                engine_state = 0  # Fallback for all other cases
+            
+            # Optional: Log error states as warnings
+            if charger_error != 'no_error':
+                logger.warning(f"Charger error detected: {charger_error}")
+                
+            values.append({
+                "path": f"propulsion.{cfg_device.engine_id}.state.value",
+                "value": engine_state
+            })
+            logger.debug(
+                "Charge: %s → Engine State: %d",
+                charge_state,
+                engine_state
+            )
+            
         return values
 
     def transform_inverter_data(
@@ -382,6 +399,27 @@ class SignalKScanner(Scanner):
                     "value": off_reason.lower(),
                 }
             )
+
+        if cfg_device.link_to_engine:
+            charge_state = getattr(data.get_charge_state(), 'name', 'unknown').lower()
+            charger_error = getattr(data.get_charger_error(), 'name', 'unknown').lower()
+            
+            # Map charge state to numeric engine state
+            if charge_state in {'bulk', 'absorption', 'float', 'storage', 'equalize'}:
+                engine_state = 1
+            else:
+                engine_state = 0
+                
+            values.append({
+                "path": f"propulsion.{cfg_device.engine_id}.state.value",
+                "value": engine_state
+            })
+            logger.debug(
+                "Orion XS Charge: %s → Engine State: %d",
+                charge_state,
+                engine_state
+            )
+
         return values
 
     def transform_smart_lithium_data(
@@ -477,33 +515,73 @@ class SignalKScanner(Scanner):
 
 async def monitor(devices: dict[str, ConfiguredDevice], adapter: str) -> None:
     os.environ["BLUETOOTH_DEVICE"] = adapter
-    logger.info(f"Starting Victron BLE monitor on adapter {adapter}")
+    logger.info("Starting monitoring on hci%d", int(adapter[3:]))
+    
+    max_retry_interval = 10  # 5 minutes maximum backoff
+    retry_count = 0
     
     while True:
+        scanner = None
         try:
+            logger.debug("Initializing BLE scanner")
             scanner = SignalKScanner(devices)
-            logger.debug(f"Initializing scanner with adapter {adapter}")
+            if scanner.discovered_devices:
+                logger.info("Known devices visible: %s", list(scanner.discovered_devices))
+            
+            # Scan with extended timeout for device discovery
             await scanner.start()
+            
+            # Check for core devices missing from discovery
+            missing_devices = [
+                d.mac for d in devices.values()
+                if d.mac not in scanner.discovered_devices
+            ]
+            if missing_devices and retry_count < 3:
+                logger.warning(f"Missing initial devices: {missing_devices}")
+                retry_count += 1
+                raise RuntimeError("Initial device discovery incomplete")
+
+            # Allow event loop to process while scanner runs
             await asyncio.Event().wait()
-        except (Exception, asyncio.CancelledError) as e:
-            logger.error(f"Scanner failed: {e}", exc_info=True)
-            logger.info(f"Attempting restart in 5 seconds...")
-            await asyncio.sleep(5)
+            
+        except (RuntimeError, Exception, asyncio.CancelledError) as e:
+            logger.error(f"Scanner failed (attempt {retry_count+1}): {e}")
+            logger.info("Attempting restart with backoff...")
+            
+            # Progressive backoff up to 5 minutes
+            backoff = min(2 ** retry_count, max_retry_interval)
+            await asyncio.sleep(backoff)
+            retry_count += 1
             continue
+            
         else:
-            break
+            # Successful scan - reset retry counter
+            retry_count = 0
+        finally:
+            # Clean up scanner resources
+            if scanner:
+                await scanner.stop()
+                del scanner
 
 
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument(
-        "--verbose", "-v", action="store_true", help="Increase the verbosity"
+        "--verbose", "-v", action="store_true", help="Enable debug logging"
     )
     args = p.parse_args()
 
-    logging.basicConfig(
-        stream=sys.stderr, level=logging.DEBUG if args.verbose else logging.WARNING
-    )
+    # Configure structured logging
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)8s [%(name)s] %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S%z"
+    ))
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG if args.verbose else logging.INFO)
+    
+    # Quiet noisy dependencies
+    logging.getLogger("bleak").setLevel(logging.WARNING)
 
     logging.debug("Waiting for config...")
     config = json.loads(input())
@@ -519,6 +597,8 @@ def main() -> None:
             mac=device["mac"],
             advertisement_key=device["key"],
             secondary_battery=device.get("secondary_battery"),
+            link_to_engine=device.get("linkToEngine", False),
+            engine_id=device.get("engineId", "mainEngine"),
         )
 
     logging.info("Starting Victron BLE plugin on adapter %s", adapter)

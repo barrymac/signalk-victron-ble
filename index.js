@@ -24,10 +24,22 @@ module.exports = function (app) {
 
       child.stdout.on('data', data => {
         app.debug(data.toString())
+        
         try {
           data.toString().split(/\r?\n/).forEach(line => {
             if (line.length > 0) {
-              app.handleMessage(undefined, JSON.parse(line))
+              const delta = JSON.parse(line)
+              
+              // Debug log engine states explicitly
+              delta.updates?.forEach(update => {
+                update.values?.forEach(value => {
+                  if (value.path.startsWith('propulsion.')) {
+                    app.debug(`Engine State Update: ${JSON.stringify(value)}`)
+                  }
+                })
+              })
+              
+              app.handleMessage(undefined, delta)
               app.handleMessage(pkgData.name, {
                 updates: [{
                   values: [{
@@ -39,16 +51,26 @@ module.exports = function (app) {
             }
           })
         } catch (e) {
-          console.error('Data processing error:', e.message)
+          app.error('Data processing error:', e.message)
         }
       })
 
       child.stderr.on('data', fromChild => {
-        console.error('Plugin stderr:', fromChild.toString())
+        fromChild.toString().split(/\r?\n/).forEach(line => {
+          if(line.match(/DEBUG/)) {
+            app.debug(line.replace(/^.*?DEBUG\s+/, '').trim())
+          } else if(line.match(/INFO/)) {
+            app.info(line.replace(/^.*?INFO\s+/, '').trim())
+          } else if(line.match(/WARNING/)) {
+            app.warn(line.replace(/^.*?WARNING\s+/, '').trim())
+          } else if(line.match(/ERROR/)) {
+            app.error(line.replace(/^.*?ERROR\s+/, '').trim())
+          }
+        })
       })
 
       child.on('error', err => {
-        console.error('Subprocess error:', err)
+        app.error('Subprocess error:', err)
         cleanup()
         setTimeout(() => run_python_plugin(options), 2000)
       })
@@ -64,7 +86,7 @@ module.exports = function (app) {
         })
         cleanup()
         if (code !== 0) {
-          console.warn(`Plugin exited ${code}, restarting in 2s...`)
+          app.warn(`Plugin exited ${code}, restarting in 2s...`)
           setTimeout(() => run_python_plugin(options), 2000)
         }
       })
