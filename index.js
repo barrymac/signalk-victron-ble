@@ -34,7 +34,6 @@ module.exports = function (app) {
               delta.updates?.forEach(update => {
                 update.values?.forEach(value => {
                   if (value.path.startsWith('propulsion.')) {
-                    console.log(`Engine State Update: ${JSON.stringify(value)}`)
                     app.debug(`Engine State Update: ${JSON.stringify(value)}`)
                   }
                 })
@@ -52,7 +51,7 @@ module.exports = function (app) {
             }
           })
         } catch (e) {
-          console.error('Data processing error:', e.message)
+          app.error('Data processing error:', e.message)
         }
       })
 
@@ -71,7 +70,7 @@ module.exports = function (app) {
       })
 
       child.on('error', err => {
-        console.error('Subprocess error:', err)
+        app.error('Subprocess error:', err)
         cleanup()
         setTimeout(() => run_python_plugin(options), 2000)
       })
@@ -87,7 +86,7 @@ module.exports = function (app) {
         })
         cleanup()
         if (code !== 0) {
-          console.warn(`Plugin exited ${code}, restarting in 2s...`)
+          app.warn(`Plugin exited ${code}, restarting in 2s...`)
           setTimeout(() => run_python_plugin(options), 2000)
         }
       })
