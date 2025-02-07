@@ -68,22 +68,14 @@ class SignalKScanner(Scanner):
             raise AdvertisementKeyMissingError(f"No key available for {address}")
 
     def callback(self, bl_device: BLEDevice, raw_data: bytes) -> None:
-        logger.debug("Device discovered: %s", bl_device)
+        logger.info("Discovered: %s (RSSI: %d)", bl_device.address, bl_device.rssi)
         self.discovered_devices.add(bl_device.address.lower())
         
-        rssi = getattr(bl_device, "rssi", None)
-        if rssi is None:
-            logger.debug(f"No RSSI for {bl_device.address.lower()}")
+        if not raw_data:
+            logger.warning("Empty payload from %s", bl_device.address)
             return
-        
-        logger.debug(
-            "Received %dB packet from %s (RSSI: %d) @ %s: Payload=%s",
-            len(raw_data),
-            bl_device.address.lower(),
-            rssi,
-            datetime.datetime.now().isoformat(),
-            raw_data.hex()
-        )
+            
+        logger.debug("DATA: <%04X>%s", len(raw_data), raw_data.hex())
         
         try:
             device = self.get_device(bl_device, raw_data)
@@ -523,7 +515,7 @@ class SignalKScanner(Scanner):
 
 async def monitor(devices: dict[str, ConfiguredDevice], adapter: str) -> None:
     os.environ["BLUETOOTH_DEVICE"] = adapter
-    logger.info(f"Starting Victron BLE monitor on adapter {adapter}")
+    logger.info("Starting monitoring on hci%d", int(adapter[3:]))
     
     max_retry_interval = 10  # 5 minutes maximum backoff
     retry_count = 0
@@ -531,9 +523,10 @@ async def monitor(devices: dict[str, ConfiguredDevice], adapter: str) -> None:
     while True:
         scanner = None
         try:
-            # Reset scanner with fresh instance each retry
+            logger.debug("Initializing BLE scanner")
             scanner = SignalKScanner(devices)
-            logger.debug(f"Scan attempt #{retry_count+1} on {adapter}")
+            if scanner.discovered_devices:
+                logger.info("Known devices visible: %s", list(scanner.discovered_devices))
             
             # Scan with extended timeout for device discovery
             await scanner.start()
@@ -574,13 +567,21 @@ async def monitor(devices: dict[str, ConfiguredDevice], adapter: str) -> None:
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument(
-        "--verbose", "-v", action="store_true", help="Increase the verbosity"
+        "--verbose", "-v", action="store_true", help="Enable debug logging"
     )
     args = p.parse_args()
 
-    logging.basicConfig(
-        stream=sys.stderr, level=logging.DEBUG if args.verbose else logging.WARNING
-    )
+    # Configure structured logging
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)8s [%(name)s] %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S%z"
+    ))
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG if args.verbose else logging.INFO)
+    
+    # Quiet noisy dependencies
+    logging.getLogger("bleak").setLevel(logging.WARNING)
 
     logging.debug("Waiting for config...")
     config = json.loads(input())

@@ -57,7 +57,17 @@ module.exports = function (app) {
       })
 
       child.stderr.on('data', fromChild => {
-        console.error('Plugin stderr:', fromChild.toString())
+        fromChild.toString().split(/\r?\n/).forEach(line => {
+          if(line.match(/DEBUG/)) {
+            app.debug(line.replace(/^.*?DEBUG\s+/, '').trim())
+          } else if(line.match(/INFO/)) {
+            app.info(line.replace(/^.*?INFO\s+/, '').trim())
+          } else if(line.match(/WARNING/)) {
+            app.warn(line.replace(/^.*?WARNING\s+/, '').trim())
+          } else if(line.match(/ERROR/)) {
+            app.error(line.replace(/^.*?ERROR\s+/, '').trim())
+          }
+        })
       })
 
       child.on('error', err => {
