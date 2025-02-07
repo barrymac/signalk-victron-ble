@@ -35,6 +35,7 @@ module.exports = function (app) {
                 update.values?.forEach(value => {
                   if (value.path.startsWith('propulsion.')) {
                     console.log(`Engine State Update: ${JSON.stringify(value)}`)
+                    app.debug(`Engine State Update: ${JSON.stringify(value)}`)
                   }
                 })
               })
